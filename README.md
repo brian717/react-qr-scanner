@@ -4,20 +4,21 @@
 [![npm downloads](https://img.shields.io/npm/dm/@yudiel/react-qr-scanner.svg)](https://www.npmjs.com/package/@yudiel/react-qr-scanner)
 [![license](https://img.shields.io/npm/l/@yudiel/react-qr-scanner.svg)](https://github.com/yudielcurbelo/react-qr-scanner/blob/main/LICENSE)
 
-A modern React library for scanning QR codes and barcodes using your device camera or webcam. Built on top of the Barcode Detection API with React hooks and components.
+A modern React library for scanning QR codes and barcodes using your device camera or webcam. Built on top of the
+Barcode Detection API with React hooks and components.
 
 ## Features
 
-- **Multiple Barcode Formats** - Supports QR codes, EAN, UPC, Code 128, and many more 1D/2D formats
-- **Camera Controls** - Built-in torch (flashlight), zoom, and camera switching capabilities
-- **Flexible Scanning** - Continuous scanning, single scan mode, or pause/resume functionality
-- **Custom Tracking** - Draw custom overlays and tracking visualizations on detected barcodes
-- **Device Selection** - Choose specific cameras with the `useDevices` hook
-- **Customizable UI** - Custom styles, class names, and component overrides
-- **Audio Feedback** - Optional beep sound on successful scans (with custom sound support)
-- **TypeScript Support** - Fully typed for excellent developer experience
-- **Lightweight** - Minimal dependencies with optimized bundle size
-- **Cross-browser Compatible** - Works across modern browsers with `webrtc-adapter`
+- **Multiple Barcode Formats**: Supports QR codes, EAN, UPC, Code 128, and many more 1D/2D formats
+- **Camera Controls**: Built-in torch (flashlight), zoom, and camera switching capabilities
+- **Flexible Scanning**: Continuous scanning, single scan mode, or pause/resume functionality
+- **Custom Tracking**: Draw custom overlays and tracking visualizations on detected barcodes
+- **Device Selection**: Choose specific cameras with the `useDevices` hook
+- **Customizable UI**: Custom styles, class names, and component overrides
+- **Audio Feedback**: Optional beep sound on successful scans (with custom sound support)
+- **TypeScript Support**: Fully typed for excellent developer experience
+- **Lightweight**: Minimal dependencies with optimized bundle size
+- **Cross-browser Compatible**: Works across modern browsers with `webrtc-adapter`
 
 ## Table of Contents
 
@@ -33,10 +34,13 @@ A modern React library for scanning QR codes and barcodes using your device came
   - [UI Components](#ui-components)
 - [API Reference](#api-reference)
   - [Scanner Props](#scanner-props)
+  - [Scanner Ref](#scanner-ref)
   - [useDevices Hook](#usedevices-hook)
+  - [Utilities](#utilities)
 - [Supported Formats](#supported-formats)
 - [Type Definitions](#type-definitions)
 - [Browser Support](#browser-support)
+- [Troubleshooting](#troubleshooting)
 - [Limitations](#limitations)
 - [Contributing](#contributing)
 - [License](#license)
@@ -254,20 +258,55 @@ function UIComponentsExample() {
 
 ### Scanner Props
 
-| Prop            | Type                                          | Required | Default | Description                                                                                      |
-|-----------------|-----------------------------------------------|----------|---------|--------------------------------------------------------------------------------------------------|
-| `onScan`        | `(detectedCodes: IDetectedBarcode[]) => void` | Yes      | -       | Callback function called when one or more barcodes are detected.                                 |
-| `onError`       | `(error: unknown) => void`                    | No       | -       | Callback function called when an error occurs while accessing the camera.                        |
-| `constraints`   | `MediaTrackConstraints`                       | No       | `{}`    | Media track constraints to apply to the video stream (e.g., `facingMode`, `deviceId`).          |
-| `formats`       | `BarcodeFormat[]`                             | No       | All     | Array of barcode formats to detect. If not specified, all supported formats are detected.        |
-| `paused`        | `boolean`                                     | No       | `false` | If `true`, the scanner pauses and displays the last frame.                                       |
-| `children`      | `ReactNode`                                   | No       | -       | Custom children to render inside the scanner container.                                          |
-| `components`    | `IScannerComponents`                          | No       | `{}`    | Configuration for built-in UI components and custom tracker function.                            |
-| `styles`        | `IScannerStyles`                              | No       | `{}`    | Custom CSS styles for scanner elements.                                                          |
-| `classNames`    | `IScannerClassNames`                          | No       | `{}`    | Custom CSS class names for scanner elements.                                                     |
-| `scanDelay`     | `number`                                      | No       | `500`   | Delay in milliseconds between successful scans. Prevents duplicate detections.                   |
-| `allowMultiple` | `boolean`                                     | No       | `false` | If `true`, allows the same barcode to trigger `onScan` multiple times.                           |
-| `sound`         | `boolean \| string`                           | No       | `false` | If `true`, plays default beep sound. Provide a base64 audio string for custom sound.            |
+| Prop             | Type                                          | Required | Default      | Description                                                                                                        |
+|------------------|-----------------------------------------------|----------|--------------|--------------------------------------------------------------------------------------------------------------------|
+| `onScan`         | `(detectedCodes: IDetectedBarcode[]) => void` | Yes      | -            | Called when one or more barcodes are detected.                                                                     |
+| `onError`        | `(error: IScannerError) => void`              | No       | -            | Called with a typed error if the camera fails to start or detection fails. See [Type Definitions](#iscannererror). |
+| `constraints`    | `MediaTrackConstraints`                       | No       | `{}`         | Media track constraints applied to the video stream (e.g., `facingMode`, `deviceId`).                              |
+| `formats`        | `BarcodeFormat[]`                             | No       | All          | Barcode formats to detect. If omitted, all supported formats are detected.                                         |
+| `paused`         | `boolean`                                     | No       | `false`      | If `true`, the scanner pauses and displays the last frame.                                                         |
+| `children`       | `ReactNode`                                   | No       | -            | Custom children to render inside the scanner container.                                                            |
+| `components`     | `IScannerComponents`                          | No       | `{}`         | Built-in UI components and optional tracker.                                                                       |
+| `tracker`        | `TrackFunction`                               | No       | -            | Shortcut for `components.tracker`. Overrides it if both are set.                                                   |
+| `styles`         | `IScannerStyles`                              | No       | `{}`         | Inline CSS for scanner elements.                                                                                   |
+| `classNames`     | `IScannerClassNames`                          | No       | `{}`         | Class names for scanner elements.                                                                                  |
+| `scanDelay`      | `number`                                      | No       | `0`          | Minimum delay (ms) between `onScan` calls when `allowMultiple` is `true`.                                          |
+| `retryDelay`     | `number`                                      | No       | `500` / `33` | Minimum delay (ms) between detection attempts. Default is 500 with no tracker, 33 (≈30 fps) with a tracker.        |
+| `allowMultiple`  | `boolean`                                     | No       | `false`      | If `true`, allows the same barcode to trigger `onScan` repeatedly.                                                 |
+| `sound`          | `boolean \| string`                           | No       | `true`       | Plays a beep on successful scan. Pass a URL/data URI for a custom sound.                                           |
+| `startTimeoutMs` | `number`                                      | No       | `3000`       | Maximum time (ms) to wait for `play()` before failing with a timeout error.                                        |
+| `settleDelayMs`  | `number`                                      | No       | `500`        | Delay (ms) after `play()` before reading camera capabilities/settings. Set lower for faster devices.               |
+
+### Scanner Ref
+
+`Scanner` is a `forwardRef` component. Pass a ref to access the underlying
+video element and the active `MediaStream`:
+
+```tsx
+import { Scanner, type IScannerHandle } from '@yudiel/react-qr-scanner';
+import { useRef } from 'react';
+
+function App() {
+  const scannerRef = useRef<IScannerHandle>(null);
+
+  function snapshot() {
+    const video = scannerRef.current?.getVideoElement();
+    if (!video) return;
+    // ...take a still frame from the video element
+  }
+
+  return <Scanner ref={scannerRef} onScan={console.log} />;
+}
+```
+
+The ref shape is:
+
+```ts
+interface IScannerHandle {
+  getVideoElement: () => HTMLVideoElement | null;
+  getStream: () => MediaStream | null;
+}
+```
 
 ### useDevices Hook
 
@@ -297,6 +336,52 @@ function CameraList() {
   );
 }
 ```
+
+### Utilities
+
+#### `isBarcodeDetectorSupported()`
+
+Returns `true` if the browser ships a native `BarcodeDetector`. Useful for
+gating UI on native vs. polyfill detection.
+
+```ts
+import { isBarcodeDetectorSupported } from '@yudiel/react-qr-scanner';
+
+if (!isBarcodeDetectorSupported()) {
+  console.info('Using the polyfill detector; performance will be lower.');
+}
+```
+
+#### `createScannerError(cause)`
+
+Maps a `DOMException`, `Error`, or string to an `IScannerError`. The `Scanner`
+component calls this internally before invoking `onError`; export is provided
+for callers building their own integrations on top of `useDevices` /
+`useCamera`.
+
+#### Advanced: customizing the detector engine
+
+The library re-exports two escape hatches from `barcode-detector` for swapping
+out the ZXing engine the polyfill uses (e.g., to host the WASM yourself, or to
+swap in a different build):
+
+```ts
+import {
+  prepareZXingModule,
+  setZXingModuleOverrides,
+} from '@yudiel/react-qr-scanner';
+
+// Override the location the polyfill loads its WASM from
+setZXingModuleOverrides({
+  locateFile: (path) => `/static/${path}`,
+});
+
+// Or pre-warm the engine before the first scan
+await prepareZXingModule();
+```
+
+See the [`barcode-detector` docs](https://github.com/Sec-ant/barcode-detector)
+for the full API.
 
 ## Supported Formats
 
@@ -400,6 +485,37 @@ interface IScannerComponents {
 }
 ```
 
+### `IScannerError`
+
+```typescript
+type ScannerErrorKind =
+  | 'permission-denied'   // user denied camera permission
+  | 'no-camera'           // no video input device found
+  | 'in-use'              // device locked by another app/tab
+  | 'overconstrained'     // requested constraints can't be satisfied
+  | 'insecure-context'    // not HTTPS / localhost
+  | 'unsupported'         // browser lacks getUserMedia / Stream API
+  | 'aborted'             // request was aborted
+  | 'security'            // SecurityError raised
+  | 'type-error'          // bad input passed to getUserMedia
+  | 'unknown';            // unmatched DOMException or non-Error cause
+
+interface IScannerError {
+  kind: ScannerErrorKind;
+  message: string;
+  cause: unknown;          // the original DOMException / Error
+}
+```
+
+### `IScannerHandle`
+
+```typescript
+interface IScannerHandle {
+  getVideoElement: () => HTMLVideoElement | null;
+  getStream: () => MediaStream | null;
+}
+```
+
 ### `TrackFunction`
 
 ```typescript
@@ -431,11 +547,14 @@ interface IScannerClassNames {
 ## Browser Support
 
 This library requires support for:
-- **getUserMedia API** - Camera access
-- **Barcode Detection API** - Barcode scanning (polyfilled via [barcode-detector](https://www.npmjs.com/package/barcode-detector))
-- **Canvas API** - Drawing tracking overlays
+
+- **getUserMedia API**: Camera access
+- **Barcode Detection API**: Barcode scanning (polyfilled
+  via [barcode-detector](https://www.npmjs.com/package/barcode-detector))
+- **Canvas API**: Drawing tracking overlays
 
 **Supported Browsers:**
+
 - Chrome/Edge 88+
 - Firefox 90+ (with polyfill)
 - Safari 14+ (with polyfill)
@@ -443,11 +562,89 @@ This library requires support for:
 
 The library uses `webrtc-adapter` for cross-browser compatibility.
 
+## Troubleshooting
+
+### `onError` fires with `kind: 'permission-denied'`
+
+The user (or a previously remembered choice) denied camera access. Surface a
+prompt asking them to re-grant permission in their browser. In Chrome:
+site-info chip → Camera → Allow. In Safari: Settings → Websites → Camera.
+
+### `kind: 'no-camera'`
+
+`enumerateDevices()` returned no video inputs. Common causes:
+
+- No camera connected (desktop without a webcam).
+- A previously selected `deviceId` is no longer connected. Pass a different
+  `deviceId`, or omit `constraints.deviceId` entirely to fall back to
+  `facingMode`.
+
+### `kind: 'in-use'`
+
+Another app or browser tab has the camera locked. On Windows, the desktop
+Camera app is a common culprit; on mobile, switching apps mid-scan can do this
+too. The library can't recover from this; close the other consumer and
+remount the `Scanner`.
+
+### `kind: 'overconstrained'`
+
+The combination of constraints you passed can't be satisfied by any connected
+camera. Most often this is a `deviceId` + `facingMode` conflict (the library
+already strips `facingMode` when a `deviceId` is present, but a user-passed
+`width`/`height`/`aspectRatio` might still be impossible). Drop the failing
+constraint and retry.
+
+### `kind: 'insecure-context'`
+
+Camera APIs require a secure origin. Serve over HTTPS, or develop on
+`localhost` (Chrome / Firefox / Safari all consider `localhost` secure).
+
+### Scanner runs but never detects anything
+
+- Make sure there's enough light and the camera is in focus.
+- Try removing the `formats` prop to detect all formats. The format you
+  expected might not be in the list.
+- If `isBarcodeDetectorSupported()` returns `false`, the polyfill WASM is
+  doing the work. Check the Network tab for the WASM file (404 → host with
+  `setZXingModuleOverrides({ locateFile })`).
+
+### iOS Safari plays no sound on the first scan
+
+iOS requires a user gesture before audio can play. The very first scan after
+page load may be silent; subsequent scans (after any user interaction) play
+normally.
+
+### Torch turns off when I zoom in
+
+This is intentional. Mobile browsers can't mix ImageCapture (torch) and
+non-ImageCapture (zoom) constraints simultaneously. The library disables the torch
+before applying zoom and updates the React state to match. Re-toggle torch
+after the zoom change settles.
+
+### Next.js / SSR errors at build time
+
+Import the scanner lazily so it never runs on the server:
+
+```tsx
+import dynamic from 'next/dynamic';
+
+const Scanner = dynamic(
+  () => import('@yudiel/react-qr-scanner').then((m) => m.Scanner),
+  { ssr: false },
+);
+```
+
+`useDevices()` is also browser-only. Only call it inside `'use client'`
+components (App Router) or with `dynamic({ ssr: false })` wrappers.
+
 ## Limitations
 
-- **HTTPS or localhost required** - Due to browser security restrictions, camera access only works on secure contexts (HTTPS or localhost).
-- **iOS audio limitations** - Beep sound on iOS Safari requires user interaction before playing. The first scan after page load may not play sound.
-- **Server-Side Rendering (SSR)** - This library requires browser APIs and will not work during SSR. Ensure you only import and use it in client-side code:
+- **HTTPS or localhost required**: Due to browser security restrictions, camera access only works on secure contexts
+  (HTTPS or localhost).
+- **iOS audio limitations**: Beep sound on iOS Safari requires user interaction before playing. The first scan after
+  the page load may not play sound.
+- **Server-Side Rendering (SSR)**: This library requires browser APIs and will not work during SSR. Ensure you only
+  import and use it in client-side code:
 
   ```jsx
   // Next.js example
@@ -459,18 +656,17 @@ The library uses `webrtc-adapter` for cross-browser compatibility.
   );
   ```
 
-- **Mobile browser constraints** - Some mobile browsers cannot use torch and zoom simultaneously. The library automatically disables torch when zoom is activated to prevent conflicts.
+- **Mobile browser constraints**: Some mobile browsers cannot use torch and zoom simultaneously. The library
+  automatically disables the torch when the zoom is activated to prevent conflicts.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for local-dev setup, code style, PR
+process, and the project layout. By participating you agree to abide by the
+[Code of Conduct](./CODE_OF_CONDUCT.md). Report security issues via GitHub's
+private vulnerability reporting flow.
 
 ## License
 
-[MIT](https://github.com/yudielcurbelo/react-qr-scanner/blob/main/LICENSE) © [Yudiel Curbelo](https://github.com/yudielcurbelo)
+[MIT](https://github.com/yudielcurbelo/react-qr-scanner/blob/main/LICENSE)
+© [Yudiel Curbelo](https://github.com/yudielcurbelo)
