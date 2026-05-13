@@ -1,5 +1,4 @@
 import commonjs from '@rollup/plugin-commonjs';
-import terser from '@rollup/plugin-terser';
 import typescript from '@rollup/plugin-typescript';
 
 export default [
@@ -25,17 +24,18 @@ export default [
 				tsconfig: './tsconfig.json',
 				compilerOptions: {
 					declaration: true,
+					declarationMap: true,
 					declarationDir: 'dist',
 					inlineSources: true,
 				},
-				exclude: ['**/stories/**'],
+				exclude: ['**/stories/**', '**/*.test.ts', '**/*.test.tsx'],
 			}),
-			terser(),
 		],
 		external: (id) => {
 			return (
 				id.startsWith('react') ||
 				id === 'barcode-detector' ||
+				id.startsWith('barcode-detector/') ||
 				id === 'webrtc-adapter'
 			);
 		},
