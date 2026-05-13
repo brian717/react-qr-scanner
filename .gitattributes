@@ -1,14 +1,14 @@
 # Default: let Git decide if a file is text and normalize line endings to LF in the repo.
 * text=auto eol=lf
 
-# Lockfiles and JSON/YAML/Markdown configs — always LF.
+# Lockfiles and JSON/YAML/Markdown configs: always LF.
 package-lock.json text eol=lf
 *.json text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 *.md text eol=lf
 
-# Source files — always LF.
+# Source files: always LF.
 *.ts text eol=lf
 *.tsx text eol=lf
 *.js text eol=lf
@@ -25,7 +25,7 @@ package-lock.json text eol=lf
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
 
-# Binary assets — never normalize.
+# Binary assets: never normalize.
 *.png binary
 *.jpg binary
 *.jpeg binary

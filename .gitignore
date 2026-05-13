@@ -1,7 +1,14 @@
 dist/
 node_modules/
 storybook-static/
+coverage/
 
 .idea
+.DS_Store
 
+*.log
 *storybook.log
+
+.env
+.env.*
+!.env.example
