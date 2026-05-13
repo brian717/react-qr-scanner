@@ -63,25 +63,3 @@ Avoid
 | test     | Adding or refactoring tests           |
 | style    | Code formatting (no logic change)     |
 | perf     | Performance improvements              |
-
-## Linking Sentry Issues
-
-When a commit fixes a Sentry issue, append a footer line so Sentry auto-resolves
-the issue once the commit lands on the release branch. The frontend project slug
-is `nextjs`, so issue short IDs look like `NEXTJS-Q`, `NEXTJS-1A`, etc. Copy
-the short ID from the Sentry issue page header or the issue URL.
-
-Use one of the following keywords (case-insensitive): `Fixes`, `Closes`, `Resolves`.
-
-```
-fix: skip sentry capture for transient signalr negotiation failures
-
-- Filter known auto-recovering errors out of phase=start captureException
-- Toast and onclose path unchanged
-
-Fixes NEXTJS-Q
-Fixes NEXTJS-R
-```
-
-Multiple issues can be referenced one per line. Only use these keywords when the
-commit actually resolves the issue. Do not link merely related work.
