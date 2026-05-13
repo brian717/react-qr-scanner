@@ -1,17 +1,17 @@
 import type { CSSProperties } from 'react';
 
 interface ITorchOffProps {
-	onClick: () => void;
 	className?: string;
 	style?: CSSProperties;
 }
 
 export default function TorchOffIcon(props: ITorchOffProps) {
-	const { onClick, className, style } = props;
+	const { className, style } = props;
 
 	return (
 		<svg
-			onClick={onClick}
+			aria-hidden="true"
+			focusable="false"
 			width="30px"
 			height="30px"
 			viewBox="0 0 24 24"
@@ -19,7 +19,6 @@ export default function TorchOffIcon(props: ITorchOffProps) {
 			style={style}
 			xmlns="http://www.w3.org/2000/svg"
 		>
-			<title>Torch Off</title>
 			<path
 				strokeWidth={0.2}
 				stroke="yellow"

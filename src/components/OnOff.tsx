@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 
 import CameraOffIcon from '../assets/CameraOffIcon';
 import CameraOnIcon from '../assets/CameraOnIcon';
@@ -9,34 +9,72 @@ interface IOnOffProps {
 	stopScanning: () => void;
 }
 
+const buttonStyle: CSSProperties = {
+	bottom: 85,
+	right: 8,
+	position: 'absolute',
+	zIndex: 2,
+	background: 'transparent',
+	border: 0,
+	padding: 4,
+	margin: 0,
+	display: 'inline-flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+};
+
 export default function OnOff(props: IOnOffProps) {
 	const { scanning, startScanning, stopScanning } = props;
 
 	const [buttonDisabled, setButtonDisabled] = useState(false);
+	const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => {
+		return () => {
+			if (timeoutRef.current !== null) clearTimeout(timeoutRef.current);
+		};
+	}, []);
 
 	function toggleScanning() {
+		if (buttonDisabled) return;
+
 		setButtonDisabled(true);
 
-		scanning ? stopScanning() : startScanning();
+		if (scanning) {
+			stopScanning();
+		} else {
+			startScanning();
+		}
 
-		setTimeout(() => setButtonDisabled(false), 1000);
+		if (timeoutRef.current !== null) {
+			clearTimeout(timeoutRef.current);
+		}
+
+		timeoutRef.current = setTimeout(() => {
+			setButtonDisabled(false);
+			timeoutRef.current = null;
+		}, 1000);
 	}
 
+	const label = scanning ? 'Turn camera off' : 'Turn camera on';
+
 	return (
-		<div
+		<button
+			type="button"
+			aria-label={label}
+			aria-pressed={scanning}
+			disabled={buttonDisabled}
+			onClick={toggleScanning}
 			style={{
-				bottom: 85,
-				right: 8,
-				position: 'absolute',
-				zIndex: 2,
+				...buttonStyle,
 				cursor: buttonDisabled ? 'default' : 'pointer',
 			}}
 		>
 			{scanning ? (
-				<CameraOffIcon disabled={buttonDisabled} onClick={toggleScanning} />
+				<CameraOffIcon disabled={buttonDisabled} />
 			) : (
-				<CameraOnIcon disabled={buttonDisabled} onClick={toggleScanning} />
+				<CameraOnIcon disabled={buttonDisabled} />
 			)}
-		</div>
+		</button>
 	);
 }
