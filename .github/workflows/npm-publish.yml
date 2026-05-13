@@ -22,9 +22,6 @@ jobs:
           registry-url: https://registry.npmjs.org/
           scope: '@yudiel'
 
-      - name: Update npm
-        run: npm install -g npm@latest
-
       - name: Install Dependencies
         run: npm ci
 
