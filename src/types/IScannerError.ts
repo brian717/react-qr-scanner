@@ -1,0 +1,17 @@
+export type ScannerErrorKind =
+	| 'permission-denied'
+	| 'no-camera'
+	| 'in-use'
+	| 'overconstrained'
+	| 'insecure-context'
+	| 'unsupported'
+	| 'aborted'
+	| 'security'
+	| 'type-error'
+	| 'unknown';
+
+export interface IScannerError {
+	kind: ScannerErrorKind;
+	message: string;
+	cause: unknown;
+}

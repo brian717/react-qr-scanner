@@ -5,9 +5,23 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { IStartCamera, IStartTaskResult, IStopTaskResult } from '../types';
 
 type TaskResult = IStartTaskResult | IStopTaskResult;
-type CreateObjectURLCompat = (obj: MediaSource | Blob | MediaStream) => string;
 
-export default function useCamera() {
+export interface IUseCameraOptions {
+	/** Maximum time (ms) to wait for the video element to start playing. */
+	startTimeoutMs?: number;
+	/** Delay (ms) after `play()` before reading capabilities/settings. */
+	settleDelayMs?: number;
+}
+
+const DEFAULT_START_TIMEOUT_MS = 3000;
+const DEFAULT_SETTLE_DELAY_MS = 500;
+
+export default function useCamera(options: IUseCameraOptions = {}) {
+	const {
+		startTimeoutMs = DEFAULT_START_TIMEOUT_MS,
+		settleDelayMs = DEFAULT_SETTLE_DELAY_MS,
+	} = options;
+
 	const taskQueue = useRef<Promise<TaskResult>>(
 		Promise.resolve({ type: 'stop', data: {} }),
 	);
@@ -37,50 +51,52 @@ export default function useCamera() {
 				video: constraints,
 			});
 
-			if (videoEl.srcObject !== undefined) {
-				videoEl.srcObject = stream;
-			} else if (videoEl.mozSrcObject !== undefined) {
-				videoEl.mozSrcObject = stream;
-			} else if (window.URL.createObjectURL) {
-				videoEl.src = (window.URL.createObjectURL as CreateObjectURLCompat)(
-					stream,
-				);
-			} else if (window.webkitURL) {
-				videoEl.src = (
-					window.webkitURL.createObjectURL as CreateObjectURLCompat
-				)(stream);
-			} else {
-				videoEl.src = stream.id;
+			videoEl.srcObject = stream;
+
+			// Race play() against a timeout. Some cameras legitimately take a
+			// while to start (multi-cam phones, USB webcams initializing); the
+			// timeout exists so a fully wedged play() doesn't hang the caller.
+			let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+			try {
+				await Promise.race([
+					videoEl.play(),
+					new Promise<never>((_, reject) => {
+						timeoutId = setTimeout(
+							() =>
+								reject(
+									new Error(
+										`Loading camera stream timed out after ${startTimeoutMs} ms.`,
+									),
+								),
+							startTimeoutMs,
+						);
+					}),
+				]);
+			} finally {
+				if (timeoutId !== undefined) clearTimeout(timeoutId);
 			}
 
-			await Promise.race([
-				videoEl.play(),
-
-				new Promise((resolve) => setTimeout(resolve, 3000)).then(() => {
-					throw new Error('Loading camera stream timed out after 3 seconds.');
-				}),
-			]);
-
-			await new Promise((resolve) => setTimeout(resolve, 500));
+			// Some browsers (notably mobile Safari) report stale track settings
+			// immediately after play(); this short wait lets capabilities settle.
+			if (settleDelayMs > 0) {
+				await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
+			}
 
 			const [track] = stream.getVideoTracks();
 
 			setSettings(track.getSettings());
-			setCapabilities(track?.getCapabilities?.() ?? {});
+			setCapabilities(track.getCapabilities?.() ?? {});
 
 			currentStream.current = stream;
 			currentVideoTrack.current = track;
 
 			return {
 				type: 'start',
-				data: {
-					videoEl,
-					stream,
-					constraints,
-				},
+				data: { videoEl, stream, constraints },
 			};
 		},
-		[],
+		[startTimeoutMs, settleDelayMs],
 	);
 
 	const runStopTask = useCallback(
@@ -88,8 +104,8 @@ export default function useCamera() {
 			videoEl: HTMLVideoElement,
 			stream: MediaStream,
 		): Promise<IStopTaskResult> => {
-			videoEl.src = '';
 			videoEl.srcObject = null;
+			videoEl.removeAttribute('src');
 			videoEl.load();
 
 			for (const track of stream.getTracks()) {
@@ -102,10 +118,7 @@ export default function useCamera() {
 
 			setSettings({});
 
-			return {
-				type: 'stop',
-				data: {},
-			};
+			return { type: 'stop', data: {} };
 		},
 		[],
 	);
@@ -145,7 +158,6 @@ export default function useCamera() {
 				})
 				.catch((error): IStopTaskResult => {
 					startError = error;
-
 					return { type: 'stop', data: {} };
 				});
 
@@ -186,35 +198,71 @@ export default function useCamera() {
 
 	const updateConstraints = useCallback(
 		async (newConstraints: MediaTrackConstraints) => {
-			const videoTrack = currentVideoTrack.current;
+			// Route through the task queue so updates can't race with start/stop.
+			// On failure, preserve the previous start-task result so stopCamera()
+			// can still tear down the live stream — synthesizing a fake `stop`
+			// result here would corrupt the queue and orphan the camera hardware.
+			let updateError: unknown = null;
 
-			if (videoTrack) {
-				// Mixing ImageCapture and non-ImageCapture constraints is not currently supported
-				if (newConstraints.advanced?.[0].zoom) {
-					const capabilities = videoTrack.getCapabilities();
+			taskQueue.current = taskQueue.current.then(
+				async (prevTaskResult): Promise<TaskResult> => {
+					const videoTrack = currentVideoTrack.current;
 
-					if (capabilities.torch) {
-						await videoTrack.applyConstraints({ advanced: [{ torch: false }] });
+					if (!videoTrack || prevTaskResult.type !== 'start') {
+						updateError = new Error('No active video track found.');
+
+						return prevTaskResult;
 					}
-				}
 
-				await videoTrack.applyConstraints(newConstraints);
+					try {
+						// Mobile browsers can't mix ImageCapture (torch) and non-ImageCapture
+						// (zoom) constraints. If the zoom is being applied while the torch is on,
+						// disable the torch first and sync the React state so the UI reflects it.
+						if (newConstraints.advanced?.[0]?.zoom) {
+							const caps = videoTrack.getCapabilities();
 
-				const updatedCapabilities = videoTrack.getCapabilities();
-				const updatedSettings = videoTrack.getSettings();
+							if (caps.torch) {
+								await videoTrack.applyConstraints({
+									advanced: [{ torch: false }],
+								});
 
-				setCapabilities(updatedCapabilities);
-				setSettings(updatedSettings);
-			} else {
-				throw new Error('No active video track found.');
-			}
+								setSettings(videoTrack.getSettings());
+							}
+						}
+
+						await videoTrack.applyConstraints(newConstraints);
+
+						setCapabilities(videoTrack.getCapabilities());
+						setSettings(videoTrack.getSettings());
+					} catch (err) {
+						updateError = err;
+					}
+
+					return prevTaskResult;
+				},
+			);
+
+			await taskQueue.current;
+
+			if (updateError) throw updateError;
 		},
 		[],
 	);
 
+	const flush = useCallback(async () => {
+		try {
+			await taskQueue.current;
+		} catch {
+			// Already settled; error path doesn't matter for flush.
+		}
+	}, []);
+
 	useEffect(() => {
 		return () => {
-			(async () => await stopCamera())();
+			// Best-effort cleanup. Tasks already in the queue will still run;
+			// callers that need deterministic teardown should await stopCamera()
+			// (and optionally flush()) before unmounting.
+			void stopCamera();
 		};
 	}, [stopCamera]);
 
@@ -224,5 +272,7 @@ export default function useCamera() {
 		startCamera,
 		stopCamera,
 		updateConstraints,
+		flush,
+		getStream: () => currentStream.current,
 	};
 }

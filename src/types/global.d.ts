@@ -1,7 +1,3 @@
-interface HTMLVideoElement {
-	mozSrcObject?: HTMLVideoElement['srcObject'];
-}
-
 interface MediaTrackCapabilities {
 	torch?: boolean;
 	zoom?: {

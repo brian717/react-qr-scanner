@@ -1,5 +1,9 @@
 import type { IDetectedBarcode } from '../types';
 
+/**
+ * Tracker overlay that draws an outline connecting the four corner points
+ * of every detected barcode.
+ */
 export function outline(
 	detectedCodes: IDetectedBarcode[],
 	ctx: CanvasRenderingContext2D,
@@ -23,6 +27,9 @@ export function outline(
 	}
 }
 
+/**
+ * Tracker overlay that draws an axis-aligned bounding box around each barcode.
+ */
 export function boundingBox(
 	detectedCodes: IDetectedBarcode[],
 	ctx: CanvasRenderingContext2D,
@@ -38,11 +45,103 @@ export function boundingBox(
 	}
 }
 
+interface IParsedSegments {
+	lines: string[];
+	parsedLines: Array<
+		Array<{ text: string; color: 'black' | 'blue' | 'green' }>
+	>;
+}
+
+const PROPERTY_RE = /"([^"]+)":/g;
+const VALUE_RE = /:\s*("[^"]*"|\d+|true|false|null)/g;
+
+const TEXT_CACHE = new Map<string, IParsedSegments>();
+const TEXT_CACHE_LIMIT = 32;
+
+function parseRawValue(rawValue: string): IParsedSegments {
+	const cached = TEXT_CACHE.get(rawValue);
+
+	if (cached !== undefined) return cached;
+
+	let formatted: string;
+
+	try {
+		formatted = JSON.stringify(JSON.parse(rawValue), null, 2);
+	} catch {
+		formatted = rawValue;
+	}
+
+	const lines = formatted.split('\n');
+	const parsedLines = lines.map((line) => {
+		const segments: Array<{ text: string; color: 'black' | 'blue' | 'green' }> =
+			[];
+		const propertyMatches = [...line.matchAll(PROPERTY_RE)];
+		const valueMatches = [...line.matchAll(VALUE_RE)];
+		let lastIndex = 0;
+
+		propertyMatches.forEach((match, matchIndex) => {
+			const property = match[0].replace(':', '');
+			const matchIdx = match.index ?? 0;
+			const beforeProperty = line.substring(lastIndex, matchIdx);
+
+			if (beforeProperty.length > 0) {
+				segments.push({ text: beforeProperty, color: 'black' });
+			}
+
+			segments.push({ text: property, color: 'blue' });
+			segments.push({ text: ': ', color: 'black' });
+			lastIndex = matchIdx + property.length;
+
+			if (matchIndex < valueMatches.length) {
+				const valueMatch = valueMatches[matchIndex];
+				const valueIdx = valueMatch.index ?? 0;
+				const beforeValue = line.substring(lastIndex, valueIdx);
+
+				if (beforeValue.length > 0) {
+					segments.push({ text: beforeValue, color: 'black' });
+				}
+
+				const value = valueMatch[0].match(/:\s*(.*)/)?.[1] ?? '';
+
+				segments.push({ text: value, color: 'green' });
+				lastIndex = valueIdx + valueMatch[0].length;
+			}
+		});
+
+		const remaining = line.substring(lastIndex);
+
+		if (remaining.length > 0) {
+			segments.push({ text: remaining, color: 'black' });
+		}
+
+		return segments;
+	});
+
+	const parsed: IParsedSegments = { lines, parsedLines };
+
+	if (TEXT_CACHE.size >= TEXT_CACHE_LIMIT) {
+		const firstKey = TEXT_CACHE.keys().next().value;
+
+		if (firstKey !== undefined) TEXT_CACHE.delete(firstKey);
+	}
+
+	TEXT_CACHE.set(rawValue, parsed);
+
+	return parsed;
+}
+
+/**
+ * Tracker overlay that draws the barcode's `rawValue` centered on the detected
+ * region, with JSON-aware syntax highlighting when the value parses as JSON.
+ *
+ * Parsed output is cached per `rawValue` (bounded LRU, 32 entries) so each
+ * frame only re-runs the JSON parse + regex split when a new value appears.
+ */
 export function centerText(
 	detectedCodes: IDetectedBarcode[],
 	ctx: CanvasRenderingContext2D,
 ) {
-	detectedCodes.forEach((detectedCode) => {
+	for (const detectedCode of detectedCodes) {
 		const { boundingBox, rawValue } = detectedCode;
 		const centerX = boundingBox.x + boundingBox.width / 2;
 		const centerY = boundingBox.y + boundingBox.height / 2;
@@ -52,15 +151,8 @@ export function centerText(
 		ctx.font = `${fontSize}px sans-serif`;
 		ctx.textAlign = 'left';
 
-		let formattedText: string;
+		const { lines, parsedLines } = parseRawValue(rawValue);
 
-		try {
-			formattedText = JSON.stringify(JSON.parse(rawValue), null, 2);
-		} catch {
-			formattedText = rawValue;
-		}
-
-		const lines = formattedText.split('\n');
 		const textWidth = Math.max(
 			...lines.map((line) => ctx.measureText(line).width),
 		);
@@ -101,55 +193,16 @@ export function centerText(
 		ctx.fillStyle = 'rgba(255, 255, 0, 0.9)';
 		ctx.fill();
 
-		lines.forEach((line, index) => {
+		parsedLines.forEach((segments, index) => {
 			const y =
 				centerY + index * lineHeight - ((lines.length - 1) * lineHeight) / 2;
 			let currentX = centerX - textWidth / 2;
-			let lastIndex = 0;
 
-			const propertyMatches = [...line.matchAll(/"([^"]+)":/g)];
-			const valueMatches = [
-				...line.matchAll(/:\s*("[^"]*"|\d+|true|false|null)/g),
-			];
-
-			propertyMatches.forEach((match, matchIndex) => {
-				const property = match[0].replace(':', '');
-				const beforeProperty = line.substring(lastIndex, match.index);
-
-				ctx.fillStyle = 'black';
-				ctx.fillText(beforeProperty, currentX, y);
-				currentX += ctx.measureText(beforeProperty).width;
-
-				ctx.fillStyle = 'blue';
-				ctx.fillText(property, currentX, y);
-				currentX += ctx.measureText(property).width;
-
-				lastIndex = match.index + property.length;
-
-				ctx.fillStyle = 'black';
-				ctx.fillText(': ', currentX, y);
-				currentX += ctx.measureText(': ').width;
-
-				if (matchIndex < valueMatches.length) {
-					const valueMatch = valueMatches[matchIndex];
-					const beforeValue = line.substring(lastIndex, valueMatch.index);
-
-					ctx.fillStyle = 'black';
-					ctx.fillText(beforeValue, currentX, y);
-					currentX += ctx.measureText(beforeValue).width;
-
-					const value = valueMatch[0].match(/:\s*(.*)/)?.[1] ?? '';
-					ctx.fillStyle = 'green';
-					ctx.fillText(value, currentX, y);
-					currentX += ctx.measureText(value).width;
-
-					lastIndex = valueMatch.index + valueMatch[0].length;
-				}
-			});
-
-			ctx.fillStyle = 'black';
-			const remainingLine = line.substring(lastIndex);
-			ctx.fillText(remainingLine, currentX, y);
+			for (const { text, color } of segments) {
+				ctx.fillStyle = color;
+				ctx.fillText(text, currentX, y);
+				currentX += ctx.measureText(text).width;
+			}
 		});
-	});
+	}
 }

@@ -1,6 +1,6 @@
 export interface IUseScannerState {
 	lastScan: number;
 	lastOnScan: number;
-	contentBefore: string[];
+	contentBefore: Set<string>;
 	lastScanHadContent: boolean;
 }
