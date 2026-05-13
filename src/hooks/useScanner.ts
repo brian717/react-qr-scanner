@@ -80,7 +80,7 @@ export default function useScanner(props: IUseScannerProps) {
 						anyNewCodesDetected ||
 						(allowMultiple && currentScanHasContent && scanDelayPassed)
 					) {
-						if (sound && audioRef.current && audioRef.current.paused) {
+						if (sound && audioRef.current?.paused) {
 							audioRef.current
 								.play()
 								.catch((error) =>
