@@ -18,7 +18,15 @@ export {
 	setZXingModuleOverrides,
 } from 'barcode-detector/ponyfill';
 export * from './components/Scanner';
+export {
+	default as useCamera,
+	type IUseCameraOptions,
+} from './hooks/useCamera';
 export * from './hooks/useDevices';
+export {
+	default as useScanner,
+	type IUseScannerProps,
+} from './hooks/useScanner';
 export * from './misc/overlays';
 export * from './types';
 export { createScannerError } from './utilities/createScannerError';

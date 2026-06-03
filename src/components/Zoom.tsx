@@ -12,7 +12,7 @@ interface IZoomProps {
 
 const zoomOutButtonStyle: CSSProperties = {
 	bottom: 130,
-	right: 8,
+	insetInlineEnd: 8,
 	position: 'absolute',
 	zIndex: 2,
 	background: 'transparent',
@@ -52,24 +52,28 @@ export default function Zoom(props: IZoomProps) {
 		<Fragment>
 			<button
 				type="button"
+				className="rqs-control"
 				aria-label="Zoom out"
 				disabled={atMin}
 				onClick={handleZoomOut}
 				style={{
 					...zoomOutButtonStyle,
 					cursor: atMin ? 'default' : 'pointer',
+					opacity: atMin ? 0.5 : 1,
 				}}
 			>
 				<ZoomOutIcon disabled={atMin} />
 			</button>
 			<button
 				type="button"
+				className="rqs-control"
 				aria-label="Zoom in"
 				disabled={atMax}
 				onClick={handleZoomIn}
 				style={{
 					...zoomInButtonStyle,
 					cursor: atMax ? 'default' : 'pointer',
+					opacity: atMax ? 0.5 : 1,
 				}}
 			>
 				<ZoomInIcon disabled={atMax} />

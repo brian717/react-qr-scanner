@@ -11,7 +11,7 @@ interface IOnOffProps {
 
 const buttonStyle: CSSProperties = {
 	bottom: 85,
-	right: 8,
+	insetInlineEnd: 8,
 	position: 'absolute',
 	zIndex: 2,
 	background: 'transparent',
@@ -61,6 +61,7 @@ export default function OnOff(props: IOnOffProps) {
 	return (
 		<button
 			type="button"
+			className="rqs-control"
 			aria-label={label}
 			aria-pressed={scanning}
 			disabled={buttonDisabled}
@@ -68,6 +69,7 @@ export default function OnOff(props: IOnOffProps) {
 			style={{
 				...buttonStyle,
 				cursor: buttonDisabled ? 'default' : 'pointer',
+				opacity: buttonDisabled ? 0.5 : 1,
 			}}
 		>
 			{scanning ? (

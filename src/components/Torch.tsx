@@ -11,7 +11,7 @@ interface ITorchProps {
 
 const buttonStyle: CSSProperties = {
 	bottom: 35,
-	right: 8,
+	insetInlineEnd: 8,
 	position: 'absolute',
 	zIndex: 2,
 	background: 'transparent',
@@ -34,6 +34,7 @@ export default function Torch(props: ITorchProps) {
 	return (
 		<button
 			type="button"
+			className="rqs-control"
 			aria-label={label}
 			aria-pressed={status}
 			onClick={() => torchToggle(!status)}

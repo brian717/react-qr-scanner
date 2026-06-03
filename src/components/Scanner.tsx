@@ -14,8 +14,9 @@ import useCamera from '../hooks/useCamera';
 import useScanner from '../hooks/useScanner';
 import { defaultComponents, defaultConstraints, defaultStyles } from '../misc';
 import type {
+	ICameraCapabilities,
+	ICameraSettings,
 	IDetectedBarcode,
-	IPoint,
 	IScannerClassNames,
 	IScannerComponents,
 	IScannerError,
@@ -23,15 +24,33 @@ import type {
 	IScannerStyles,
 	TrackFunction,
 } from '../types';
+import {
+	adjustBarcodeCoordinates,
+	computeTransform,
+} from '../utilities/coordinateTransform';
 import { createScannerError } from '../utilities/createScannerError';
 import deepEqual from '../utilities/deepEqual';
 import Finder from './Finder';
+import StatusOverlay from './StatusOverlay';
 
 export interface IScannerProps {
 	/** Called when one or more barcodes are detected. */
 	onScan: (detectedCodes: IDetectedBarcode[]) => void;
 	/** Called when the scanner can't start the camera or detection fails. */
 	onError?: (error: IScannerError) => void;
+	/**
+	 * Fires on every frame that contains at least one code, before the
+	 * duplicate/`scanDelay` filtering that gates `onScan`. Useful for live
+	 * tracking, velocity metrics, or custom result filtering.
+	 */
+	onDetected?: (detectedCodes: IDetectedBarcode[]) => void;
+	/** Fires when the camera becomes active (`true`) or stops (`false`). */
+	onCameraActive?: (active: boolean) => void;
+	/** Fires when the active track's capabilities or settings change. */
+	onCapabilitiesChange?: (
+		capabilities: ICameraCapabilities,
+		settings: ICameraSettings,
+	) => void;
 	/** Media track constraints applied to the camera stream. */
 	constraints?: MediaTrackConstraints;
 	/** Barcode formats to detect. Defaults to all supported formats. */
@@ -62,22 +81,32 @@ export interface IScannerProps {
 	settleDelayMs?: number;
 }
 
-const overlayStyle: CSSProperties = {
+/**
+ * Default format list: the `barcode-detector` meta-format `'any'` matches every
+ * supported 1D/2D symbology. A module-level constant keeps the reference stable
+ * across renders when no `formats` prop is provided.
+ */
+const ALL_FORMATS: BarcodeFormat[] = ['any'];
+
+const ABSOLUTE_OVERLAY: CSSProperties = {
 	position: 'absolute',
 	width: '100%',
 	height: '100%',
 };
 
-const pauseFrameStyleBase: CSSProperties = {
-	position: 'absolute',
-	width: '100%',
-	height: '100%',
-};
+const trackingLayerStyle = ABSOLUTE_OVERLAY;
 
-const trackingLayerStyle: CSSProperties = {
+/** Off-screen but readable by assistive technology (screen-reader only). */
+const visuallyHiddenStyle: CSSProperties = {
 	position: 'absolute',
-	width: '100%',
-	height: '100%',
+	width: 1,
+	height: 1,
+	padding: 0,
+	margin: -1,
+	overflow: 'hidden',
+	clip: 'rect(0, 0, 0, 0)',
+	whiteSpace: 'nowrap',
+	border: 0,
 };
 
 function clearCanvas(canvas: HTMLCanvasElement | null) {
@@ -115,43 +144,16 @@ function drawTracking(
 		return;
 	}
 
-	const largerRatio = Math.max(
-		displayWidth / resolutionWidth,
-		displayHeight / resolutionHeight,
+	const transform = computeTransform({
+		displayWidth,
+		displayHeight,
+		resolutionWidth,
+		resolutionHeight,
+	});
+
+	const adjustedCodes = detectedCodes.map((detectedCode) =>
+		adjustBarcodeCoordinates(detectedCode, transform),
 	);
-	const uncutWidth = resolutionWidth * largerRatio;
-	const uncutHeight = resolutionHeight * largerRatio;
-
-	const xScalar = uncutWidth / resolutionWidth;
-	const yScalar = uncutHeight / resolutionHeight;
-	const xOffset = (displayWidth - uncutWidth) / 2;
-	const yOffset = (displayHeight - uncutHeight) / 2;
-
-	const scale = ({ x, y }: IPoint): IPoint => ({
-		x: Math.floor(x * xScalar),
-		y: Math.floor(y * yScalar),
-	});
-
-	const translate = ({ x, y }: IPoint): IPoint => ({
-		x: Math.floor(x + xOffset),
-		y: Math.floor(y + yOffset),
-	});
-
-	const adjustedCodes = detectedCodes.map((detectedCode) => {
-		const { boundingBox, cornerPoints } = detectedCode;
-
-		const { x, y } = translate(scale({ x: boundingBox.x, y: boundingBox.y }));
-		const { x: width, y: height } = scale({
-			x: boundingBox.width,
-			y: boundingBox.height,
-		});
-
-		return {
-			...detectedCode,
-			cornerPoints: cornerPoints.map((point) => translate(scale(point))),
-			boundingBox: DOMRectReadOnly.fromRect({ x, y, width, height }),
-		};
-	});
 
 	trackingEl.width = displayWidth;
 	trackingEl.height = displayHeight;
@@ -167,7 +169,7 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 		const {
 			onScan,
 			constraints,
-			formats = ['any' as BarcodeFormat],
+			formats = ALL_FORMATS,
 			paused = false,
 			components,
 			tracker: trackerProp,
@@ -178,6 +180,9 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 			scanDelay,
 			retryDelay,
 			onError,
+			onDetected,
+			onCameraActive,
+			onCapabilitiesChange,
 			sound,
 			startTimeoutMs,
 			settleDelayMs,
@@ -186,6 +191,7 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 		const videoRef = useRef<HTMLVideoElement>(null);
 		const pauseFrameRef = useRef<HTMLCanvasElement>(null);
 		const trackingLayerRef = useRef<HTMLCanvasElement>(null);
+		const liveRegionRef = useRef<HTMLDivElement>(null);
 
 		// Normalize once: when a deviceId is present, the default `facingMode`
 		// is stripped so the comparison below has a stable shape. Doing this
@@ -213,8 +219,18 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 
 		const effectiveTracker = trackerProp ?? mergedComponents.tracker;
 
+		// `finder` may be a boolean or a theming config; normalize both.
+		const showFinder = Boolean(mergedComponents.finder);
+		const finderConfig =
+			typeof mergedComponents.finder === 'object'
+				? mergedComponents.finder
+				: undefined;
+
 		const [isMounted, setIsMounted] = useState(false);
 		const [isCameraActive, setIsCameraActive] = useState(false);
+		const [scannerError, setScannerError] = useState<IScannerError | null>(
+			null,
+		);
 		const [constraintsCached, setConstraintsCached] = useState(
 			normalizedConstraints,
 		);
@@ -224,7 +240,11 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 		const cameraRef = useRef(camera);
 		const onScanRef = useRef(onScan);
 		const onErrorRef = useRef(onError);
+		const onDetectedRef = useRef(onDetected);
 		const trackerRef = useRef<TrackFunction | undefined>(effectiveTracker);
+		// Mirrors of state/derived values the imperative handle reads at call time.
+		const constraintsCachedRef = useRef(constraintsCached);
+		const isCameraActiveRef = useRef(isCameraActive);
 
 		useEffect(() => {
 			cameraRef.current = camera;
@@ -239,17 +259,65 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 		}, [onError]);
 
 		useEffect(() => {
+			onDetectedRef.current = onDetected;
+		}, [onDetected]);
+
+		useEffect(() => {
 			trackerRef.current = effectiveTracker;
 		}, [effectiveTracker]);
 
-		// Stable onScan/onFound/onError callbacks so identity churn from inline
-		// props doesn't tear down and restart the scanning loop on every render.
+		useEffect(() => {
+			constraintsCachedRef.current = constraintsCached;
+		}, [constraintsCached]);
+
+		useEffect(() => {
+			isCameraActiveRef.current = isCameraActive;
+		}, [isCameraActive]);
+
+		// Observability callbacks are read through refs (depending only on the
+		// observed value) so passing inline handlers doesn't re-fire them.
+		const onCameraActiveRef = useRef(onCameraActive);
+		const onCapabilitiesChangeRef = useRef(onCapabilitiesChange);
+
+		useEffect(() => {
+			onCameraActiveRef.current = onCameraActive;
+		}, [onCameraActive]);
+
+		useEffect(() => {
+			onCapabilitiesChangeRef.current = onCapabilitiesChange;
+		}, [onCapabilitiesChange]);
+
+		useEffect(() => {
+			onCameraActiveRef.current?.(isCameraActive);
+		}, [isCameraActive]);
+
+		useEffect(() => {
+			onCapabilitiesChangeRef.current?.(camera.capabilities, camera.settings);
+		}, [camera.capabilities, camera.settings]);
+
+		// Stable onScan/onDetected/onFound/onError callbacks so identity churn from
+		// inline props doesn't tear down and restart the scanning loop every render.
 		const stableOnScan = useCallback((codes: IDetectedBarcode[]) => {
 			onScanRef.current?.(codes);
+
+			// Announce the decoded value(s) to screen readers. Writing textContent
+			// directly (rather than via state) avoids re-rendering on every scan.
+			const region = liveRegionRef.current;
+
+			if (region !== null && codes.length > 0) {
+				region.textContent = `Detected: ${codes
+					.map((code) => code.rawValue)
+					.join(', ')}`;
+			}
 		}, []);
 
 		const stableOnError = useCallback((error: IScannerError) => {
+			setScannerError(error);
 			onErrorRef.current?.(error);
+		}, []);
+
+		const stableOnDetected = useCallback((codes: IDetectedBarcode[]) => {
+			onDetectedRef.current?.(codes);
 		}, []);
 
 		const onFoundCallback = useCallback((detectedCodes: IDetectedBarcode[]) => {
@@ -269,6 +337,7 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 			onScan: stableOnScan,
 			onFound: onFoundCallback,
 			onError: stableOnError,
+			onDetected: stableOnDetected,
 			formats,
 			retryDelay: effectiveRetryDelay,
 			scanDelay,
@@ -318,6 +387,7 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 					});
 
 					setIsCameraActive(true);
+					setScannerError(null);
 				} else {
 					if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
 						canvasEl.width = videoEl.videoWidth;
@@ -338,13 +408,28 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 			} catch (error) {
 				setIsCameraActive(false);
 
-				onErrorRef.current?.(createScannerError(error));
+				const scannerErr = createScannerError(error);
+				setScannerError(scannerErr);
+				onErrorRef.current?.(scannerErr);
 			}
 		}, [cameraSettings]);
+
+		const onCameraChangeRef = useRef(onCameraChange);
+
+		useEffect(() => {
+			onCameraChangeRef.current = onCameraChange;
+		}, [onCameraChange]);
 
 		useEffect(() => {
 			void onCameraChange();
 		}, [onCameraChange]);
+
+		// Recovery path for the status overlay: clear the error so the overlay
+		// flips to its loading state, then re-run the camera-start flow.
+		const handleStatusRetry = useCallback(() => {
+			setScannerError(null);
+			void onCameraChangeRef.current();
+		}, []);
 
 		const shouldScan = useMemo(() => {
 			return cameraSettings.shouldStream && isCameraActive;
@@ -367,6 +452,57 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 			() => ({
 				getVideoElement: () => videoRef.current,
 				getStream: () => cameraRef.current.getStream(),
+				getCameraState: () => ({
+					isActive: isCameraActiveRef.current,
+					capabilities: cameraRef.current.capabilities,
+					settings: cameraRef.current.settings,
+				}),
+				snapshot: async (options) => {
+					const video = videoRef.current;
+
+					if (
+						video === null ||
+						video.videoWidth === 0 ||
+						video.videoHeight === 0
+					) {
+						return null;
+					}
+
+					const canvas = document.createElement('canvas');
+					canvas.width = video.videoWidth;
+					canvas.height = video.videoHeight;
+
+					const ctx = canvas.getContext('2d');
+
+					if (ctx === null) return null;
+
+					ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+					return new Promise<Blob | null>((resolve) => {
+						canvas.toBlob(
+							(blob) => resolve(blob),
+							options?.type ?? 'image/png',
+							options?.quality,
+						);
+					});
+				},
+				toggleTorch: async (on) => {
+					const next = on ?? !(cameraRef.current.settings.torch ?? false);
+
+					await cameraRef.current.updateConstraints({
+						...constraintsCachedRef.current,
+						advanced: [{ torch: next }],
+					});
+				},
+				setZoom: async (value) => {
+					await cameraRef.current.updateConstraints({
+						...constraintsCachedRef.current,
+						advanced: [{ zoom: value }],
+					});
+				},
+				restart: async () => {
+					await onCameraChangeRef.current();
+				},
 			}),
 			[],
 		);
@@ -387,11 +523,36 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 
 		const pauseFrameStyle = useMemo<CSSProperties>(
 			() => ({
-				...pauseFrameStyleBase,
+				...ABSOLUTE_OVERLAY,
 				display: paused ? 'block' : 'none',
 			}),
 			[paused],
 		);
+
+		// Opt-in loading/error overlay. Loading = the camera should be streaming
+		// but isn't active yet and no error has surfaced.
+		const statusOverlay = mergedComponents.statusOverlay;
+		const isLoading =
+			cameraSettings.shouldStream && !isCameraActive && scannerError === null;
+
+		let statusOverlayNode: ReactNode = null;
+
+		if (statusOverlay) {
+			statusOverlayNode =
+				typeof statusOverlay === 'function' ? (
+					statusOverlay({
+						error: scannerError,
+						isLoading,
+						onRetry: handleStatusRetry,
+					})
+				) : (
+					<StatusOverlay
+						error={scannerError}
+						isLoading={isLoading}
+						onRetry={handleStatusRetry}
+					/>
+				);
+		}
 
 		return (
 			<div style={containerStyle} className={classNames?.container}>
@@ -399,18 +560,28 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 					ref={videoRef}
 					style={videoStyle}
 					className={classNames?.video}
+					aria-label="Barcode scanner camera feed"
 					autoPlay
 					muted
 					playsInline
 				/>
 				<canvas ref={pauseFrameRef} style={pauseFrameStyle} />
 				<canvas ref={trackingLayerRef} style={trackingLayerStyle} />
-				<div style={overlayStyle}>
-					{mergedComponents.finder && (
+				<div
+					ref={liveRegionRef}
+					aria-live="polite"
+					aria-atomic="true"
+					style={visuallyHiddenStyle}
+				/>
+				<div style={ABSOLUTE_OVERLAY}>
+					{showFinder && (
 						<Finder
 							scanning={isCameraActive}
 							capabilities={camera.capabilities}
 							onOff={mergedComponents.onOff}
+							color={finderConfig?.color}
+							size={finderConfig?.size}
+							borderRadius={finderConfig?.borderRadius}
 							zoom={
 								mergedComponents.zoom && camera.settings.zoom
 									? {
@@ -459,6 +630,7 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 					)}
 					{children}
 				</div>
+				{statusOverlayNode}
 			</div>
 		);
 	},

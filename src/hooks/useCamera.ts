@@ -2,7 +2,8 @@ import 'webrtc-adapter';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { IStartCamera, IStartTaskResult, IStopTaskResult } from '../types';
+import type { IStartCamera } from '../types';
+import type { IStartTaskResult, IStopTaskResult } from '../types/internal';
 
 type TaskResult = IStartTaskResult | IStopTaskResult;
 
