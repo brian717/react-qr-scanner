@@ -289,27 +289,29 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 
 		// Skip the mount-time fire: `isCameraActive` is `false` and capabilities
 		// are empty placeholders before the camera starts, so reporting them would
-		// be spurious. These refs let the first real change through, not the mount.
-		const cameraActiveReportedRef = useRef(false);
-		const capabilitiesReportedRef = useRef(false);
+		// be spurious. We track the last observed value (seeded with the mount
+		// value) and only fire when it actually changes. Comparing values — rather
+		// than a "has run" flag — stays correct under StrictMode's double-invoke.
+		const lastCameraActiveRef = useRef(isCameraActive);
+		const lastCapabilitiesRef = useRef(camera.capabilities);
+		const lastSettingsRef = useRef(camera.settings);
 
 		useEffect(() => {
-			if (!cameraActiveReportedRef.current) {
-				cameraActiveReportedRef.current = true;
+			if (lastCameraActiveRef.current === isCameraActive) return;
 
-				return;
-			}
-
+			lastCameraActiveRef.current = isCameraActive;
 			onCameraActiveRef.current?.(isCameraActive);
 		}, [isCameraActive]);
 
 		useEffect(() => {
-			if (!capabilitiesReportedRef.current) {
-				capabilitiesReportedRef.current = true;
-
+			if (
+				lastCapabilitiesRef.current === camera.capabilities &&
+				lastSettingsRef.current === camera.settings
+			)
 				return;
-			}
 
+			lastCapabilitiesRef.current = camera.capabilities;
+			lastSettingsRef.current = camera.settings;
 			onCapabilitiesChangeRef.current?.(camera.capabilities, camera.settings);
 		}, [camera.capabilities, camera.settings]);
 
