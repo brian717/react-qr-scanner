@@ -67,6 +67,22 @@ describe('StatusOverlay', () => {
 		expect(onRetry).toHaveBeenCalledTimes(1);
 	});
 
+	it('injects the .rqs-control focus-ring stylesheet alongside the retry button', () => {
+		const { container } = render(
+			<StatusOverlay
+				error={error('in-use')}
+				isLoading={false}
+				onRetry={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy();
+
+		const style = container.querySelector('style');
+		expect(style).not.toBeNull();
+		expect(style?.textContent).toContain('.rqs-control:focus-visible');
+	});
+
 	it('omits the retry control for errors a retry cannot resolve', () => {
 		const onRetry = vi.fn();
 

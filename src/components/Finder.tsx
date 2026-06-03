@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 
+import ControlFocusStyle from './ControlFocusStyle';
 import OnOff from './OnOff';
 import Torch from './Torch';
 import Zoom from './Zoom';
@@ -7,13 +8,6 @@ import Zoom from './Zoom';
 const DEFAULT_COLOR = '#ef4444';
 const DEFAULT_SIZE = '70%';
 const DEFAULT_RADIUS = '0.5rem';
-
-/**
- * Focus ring for the control buttons (torch/zoom/on-off). Inline styles can't
- * express `:focus-visible`, so the rule ships as a tiny stylesheet rendered with
- * the overlay. Duplicate identical rules across instances is harmless.
- */
-const CONTROL_FOCUS_CSS = `.rqs-control:focus-visible{outline:2px solid #fff;outline-offset:2px;border-radius:6px;}`;
 
 const fullContainer: CSSProperties = {
 	width: '100%',
@@ -97,7 +91,7 @@ export default function Finder(props: IFinderProps) {
 
 	return (
 		<div style={fullContainer}>
-			<style>{CONTROL_FOCUS_CSS}</style>
+			<ControlFocusStyle />
 			<div style={innerContainer}>
 				<div style={overlay}>
 					<div style={borderBox}>

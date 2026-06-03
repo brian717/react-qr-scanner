@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { IStatusOverlayState, ScannerErrorKind } from '../types';
+import ControlFocusStyle from './ControlFocusStyle';
 
 const ERROR_MESSAGES: Record<ScannerErrorKind, string> = {
 	'permission-denied': 'Camera access was denied. Please allow it and retry.',
@@ -91,6 +92,7 @@ export default function StatusOverlay(props: IStatusOverlayState) {
 
 		return (
 			<div style={containerStyle} role="alert">
+				<ControlFocusStyle />
 				<div style={errorContentStyle}>
 					<span>{ERROR_MESSAGES[error.kind] ?? error.message}</span>
 					{canRetry && (
