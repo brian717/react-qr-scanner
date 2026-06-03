@@ -139,11 +139,25 @@ export default function useScanner(props: IUseScannerProps) {
 	const processFrame = useCallback(
 		(state: IUseScannerState) => async (timeNow: number) => {
 			const detector = barcodeDetectorRef.current;
-			if (
-				videoElementRef.current === null ||
-				videoElementRef.current.readyState <= 1 ||
-				detector === null
-			) {
+
+			// Element unmounted — the only terminal case. There's no video to
+			// reschedule against, so stop the loop here.
+			if (videoElementRef.current === null) {
+				return;
+			}
+
+			// Not yet ready (HAVE_NOTHING/HAVE_METADATA) or the detector hasn't
+			// been built. Both are transient — a brief buffer stall or
+			// constraint re-negotiation can drop readyState to 1. rVFC only
+			// fires on a newly presented frame, so returning without
+			// re-registering would freeze the loop while the camera stays live.
+			// Reschedule and retry instead.
+			if (videoElementRef.current.readyState <= 1 || detector === null) {
+				frameHandleRef.current = scheduleFrame(
+					videoElementRef.current,
+					processFrame(state),
+				);
+
 				return;
 			}
 

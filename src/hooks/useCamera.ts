@@ -118,6 +118,7 @@ export default function useCamera(options: IUseCameraOptions = {}) {
 			currentVideoTrack.current = null;
 
 			setSettings({});
+			setCapabilities({});
 
 			return { type: 'stop', data: {} };
 		},
