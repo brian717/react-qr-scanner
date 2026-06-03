@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../hooks/useCamera', () => ({
+vi.mock('../../src/hooks/useCamera', () => ({
 	default: () => ({
 		capabilities: {},
 		settings: {},
@@ -13,14 +13,14 @@ vi.mock('../hooks/useCamera', () => ({
 	}),
 }));
 
-vi.mock('../hooks/useScanner', () => ({
+vi.mock('../../src/hooks/useScanner', () => ({
 	default: () => ({
 		startScanning: vi.fn(),
 		stopScanning: vi.fn(),
 	}),
 }));
 
-import { Scanner } from './Scanner';
+import { Scanner } from '../../src/components/Scanner';
 
 describe('Scanner', () => {
 	let errorSpy: ReturnType<typeof vi.spyOn>;

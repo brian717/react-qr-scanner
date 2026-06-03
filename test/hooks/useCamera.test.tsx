@@ -1,6 +1,6 @@
 import { renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import useCamera from './useCamera';
+import useCamera from '../../src/hooks/useCamera';
 
 interface IMockTrack {
 	getSettings: ReturnType<typeof vi.fn>;

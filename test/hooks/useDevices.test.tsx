@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useDevices } from './useDevices';
+import { useDevices } from '../../src/hooks/useDevices';
 
 type DeviceListener = (event: Event) => void;
 

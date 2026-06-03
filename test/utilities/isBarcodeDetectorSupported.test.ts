@@ -6,7 +6,7 @@ describe('isBarcodeDetectorSupported', () => {
 		(globalThis as { BarcodeDetector?: unknown }).BarcodeDetector = class {};
 
 		const { isBarcodeDetectorSupported } = await import(
-			'./isBarcodeDetectorSupported'
+			'../../src/utilities/isBarcodeDetectorSupported'
 		);
 
 		expect(isBarcodeDetectorSupported()).toBe(true);
@@ -19,7 +19,7 @@ describe('isBarcodeDetectorSupported', () => {
 		delete (globalThis as { BarcodeDetector?: unknown }).BarcodeDetector;
 
 		const { isBarcodeDetectorSupported } = await import(
-			'./isBarcodeDetectorSupported'
+			'../../src/utilities/isBarcodeDetectorSupported'
 		);
 
 		expect(isBarcodeDetectorSupported()).toBe(false);
@@ -30,7 +30,7 @@ describe('isBarcodeDetectorSupported', () => {
 		delete (globalThis as { BarcodeDetector?: unknown }).BarcodeDetector;
 
 		const { isBarcodeDetectorSupported } = await import(
-			'./isBarcodeDetectorSupported'
+			'../../src/utilities/isBarcodeDetectorSupported'
 		);
 
 		// Simulate a consumer (or a side-effect import) installing the polyfill

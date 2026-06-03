@@ -10,7 +10,7 @@ vi.mock('barcode-detector/ponyfill', () => ({
 	},
 }));
 
-import useScanner from './useScanner';
+import useScanner from '../../src/hooks/useScanner';
 
 function setReadyState(el: HTMLVideoElement, value: number) {
 	Object.defineProperty(el, 'readyState', {

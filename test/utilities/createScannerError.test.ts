@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createScannerError } from './createScannerError';
+import { createScannerError } from '../../src/utilities/createScannerError';
 
 function makeDomException(name: string, message = ''): DOMException {
 	const err = new Error(message) as Error & { name: string };

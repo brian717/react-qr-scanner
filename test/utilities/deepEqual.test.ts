@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import deepEqual from './deepEqual';
+import deepEqual from '../../src/utilities/deepEqual';
 
 describe('deepEqual', () => {
 	it('compares primitives by identity', () => {

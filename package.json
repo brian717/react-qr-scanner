@@ -54,7 +54,7 @@
 		"biome:lint": "biome lint --write",
 		"biome:check": "biome check --write",
 		"format": "biome format --write",
-		"typecheck": "tsc --noEmit",
+		"typecheck": "tsc --noEmit -p tsconfig.test.json",
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage"
