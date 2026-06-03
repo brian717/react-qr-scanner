@@ -4,8 +4,17 @@
 // does not touch globalThis, so the value stays meaningful.
 import './utilities/isBarcodeDetectorSupported';
 
+export type {
+	BarcodeFormat,
+	DetectedBarcode,
+} from 'barcode-detector/ponyfill';
 export {
 	prepareZXingModule,
+	/**
+	 * @deprecated Use `prepareZXingModule({ overrides })` instead.
+	 * `setZXingModuleOverrides(x)` is the equivalent to
+	 * `prepareZXingModule({ overrides: x })`.
+	 */
 	setZXingModuleOverrides,
 } from 'barcode-detector/ponyfill';
 export * from './components/Scanner';

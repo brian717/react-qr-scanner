@@ -361,47 +361,71 @@ for callers building their own integrations on top of `useDevices` /
 
 #### Advanced: customizing the detector engine
 
-The library re-exports two escape hatches from `barcode-detector` for swapping
-out the ZXing engine the polyfill uses (e.g., to host the WASM yourself, or to
-swap in a different build):
+The library re-exports `prepareZXingModule` from `barcode-detector` as an escape
+hatch for swapping out the ZXing engine the polyfill uses (e.g., to host the WASM
+yourself, or to swap in a different build):
 
 ```ts
-import {
-  prepareZXingModule,
-  setZXingModuleOverrides,
-} from '@yudiel/react-qr-scanner';
+import { prepareZXingModule } from '@yudiel/react-qr-scanner';
 
-// Override the location the polyfill loads its WASM from
-setZXingModuleOverrides({
-  locateFile: (path) => `/static/${path}`,
+// Override where the polyfill loads its WASM from
+prepareZXingModule({
+  overrides: {
+    locateFile: (path) => `/static/${path}`,
+  },
 });
 
 // Or pre-warm the engine before the first scan
-await prepareZXingModule();
+await prepareZXingModule({ fireImmediately: true });
 ```
+
+> A `setZXingModuleOverrides` re-export is also available but **deprecated** —
+> `setZXingModuleOverrides(x)` is equivalent to `prepareZXingModule({ overrides: x })`.
 
 See the [`barcode-detector` docs](https://github.com/Sec-ant/barcode-detector)
 for the full API.
 
 ## Supported Formats
 
-The library supports detection of the following barcode formats:
+Formats are provided by the underlying [`barcode-detector`](https://github.com/Sec-ant/barcode-detector)
+engine. The full set of values accepted by the `formats` prop:
 
-| 1D Barcodes      | 2D Barcodes   |
-|------------------|---------------|
-| Codabar          | Aztec         |
-| Code 39          | Data Matrix   |
-| Code 93          | Matrix Codes  |
-| Code 128         | Maxi Code     |
-| Databar          | Micro QR Code |
-| Databar Expanded | PDF 417       |
-| Dx Film Edge     | QR Code       |
-| EAN 8            | rMQR Code     |
-| EAN 13           |               |
-| ITF              |               |
-| Linear Codes     |               |
-| UPC A            |               |
-| UPC E            |               |
+**Linear (1D)**
+
+```
+codabar          code_39          code_39_standard   code_39_extended
+code_32          pzn              code_93            code_128
+databar          databar_omni     databar_stacked    databar_stacked_omni
+databar_expanded databar_expanded_stacked            databar_limited
+dx_film_edge     ean_8            ean_13             ean_upc
+isbn             itf              itf_14             upc_a
+upc_e            telepen          telepen_alpha      telepen_numeric
+```
+
+**Matrix (2D)**
+
+```
+aztec            aztec_code       aztec_rune         data_matrix
+maxi_code        pdf417           compact_pdf417     micro_pdf417
+qr_code          qr_code_model_1  qr_code_model_2    micro_qr_code
+rm_qr_code
+```
+
+**Shorthand**
+
+| Value              | Detects                    |
+|--------------------|----------------------------|
+| `linear_codes`     | all linear (1D) formats    |
+| `matrix_codes`     | all matrix (2D) formats    |
+| `gs1_codes`        | all GS1 formats            |
+| `retail_codes`     | all retail formats         |
+| `industrial_codes` | all industrial formats     |
+| `other_barcode`    | barcodes not covered above |
+| `any`              | all formats                |
+
+> Omitting the `formats` prop is equivalent to passing `['any']` — every supported
+> format is detected. `unknown` may appear on a detected result whose symbology
+> could not be classified, but it is not meaningful as an input filter.
 
 To detect specific formats only:
 
@@ -416,31 +440,19 @@ To detect specific formats only:
 
 ### `BarcodeFormat`
 
+A union of every supported format string. It is re-exported from this package
+(sourced from [`barcode-detector`](https://github.com/Sec-ant/barcode-detector)),
+so you can type your `formats` array directly:
+
 ```typescript
-type BarcodeFormat =
-  | 'aztec'
-  | 'code_128'
-  | 'code_39'
-  | 'code_93'
-  | 'codabar'
-  | 'databar'
-  | 'databar_expanded'
-  | 'data_matrix'
-  | 'dx_film_edge'
-  | 'ean_13'
-  | 'ean_8'
-  | 'itf'
-  | 'maxi_code'
-  | 'micro_qr_code'
-  | 'pdf417'
-  | 'qr_code'
-  | 'rm_qr_code'
-  | 'upc_a'
-  | 'upc_e'
-  | 'linear_codes'
-  | 'matrix_codes'
-  | 'unknown';
+import type { BarcodeFormat } from '@yudiel/react-qr-scanner';
+
+const formats: BarcodeFormat[] = ['qr_code', 'ean_13', 'code_128'];
 ```
+
+See the [Supported Formats](#supported-formats) section above for the complete list
+of values. Because the type tracks the upstream engine, new symbologies become
+available automatically as `barcode-detector` is updated.
 
 ### `IDetectedBarcode`
 
@@ -606,7 +618,7 @@ Camera APIs require a secure origin. Serve over HTTPS, or develop on
   expected might not be in the list.
 - If `isBarcodeDetectorSupported()` returns `false`, the polyfill WASM is
   doing the work. Check the Network tab for the WASM file (404 → host with
-  `setZXingModuleOverrides({ locateFile })`).
+  `prepareZXingModule({ overrides: { locateFile } })`).
 
 ### iOS Safari plays no sound on the first scan
 
@@ -618,7 +630,7 @@ normally.
 
 This is intentional. Mobile browsers can't mix ImageCapture (torch) and
 non-ImageCapture (zoom) constraints simultaneously. The library disables the torch
-before applying zoom and updates the React state to match. Re-toggle torch
+before applying zoom and updates the React state to match. Re-toggle the torch 
 after the zoom change settles.
 
 ### Next.js / SSR errors at build time
