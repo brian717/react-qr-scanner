@@ -1,6 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { ScannerErrorKind } from '../types';
-import type { IStatusOverlayState } from '../types/IStatusOverlayState';
+import type { IStatusOverlayState, ScannerErrorKind } from '../types';
 
 const ERROR_MESSAGES: Record<ScannerErrorKind, string> = {
 	'permission-denied': 'Camera access was denied. Please allow it and retry.',
@@ -27,7 +26,7 @@ const containerStyle: CSSProperties = {
 	inset: 0,
 	zIndex: 3,
 	// The backdrop is passive feedback, not a modal. Letting clicks pass through
-	// keeps the controls beneath (on/off, torch, zoom) reachable; interactive
+	// keeps the controls beneath (on/off, torch, zoom) reachable; the interactive
 	// children below opt back in with `pointerEvents: 'auto'`.
 	pointerEvents: 'none',
 	display: 'flex',
@@ -71,12 +70,14 @@ const spinnerStyle: CSSProperties = {
 	borderRadius: '50%',
 	border: '3px solid rgba(255, 255, 255, 0.35)',
 	borderTopColor: '#fff',
-	animation: 'rqs-spin 0.8s linear infinite',
+	// animation is intentionally omitted here; it is applied via the
+	// .rqs-spinner class so the prefers-reduced-motion media query can
+	// override it (inline styles have higher specificity than class rules).
 };
 
-// Keyframes can't live in inline styles; the spinner animation respects
-// reduced-motion preferences by pausing the rotation.
-const SPINNER_CSS = `@keyframes rqs-spin{to{transform:rotate(360deg)}}@media (prefers-reduced-motion: reduce){.rqs-spinner{animation:none}}`;
+// Keyframes can't live in inline styles, and the animation is assigned via the
+// .rqs-spinner class (not inline), so the reduced-motion query can disable it.
+const SPINNER_CSS = `@keyframes rqs-spin{to{transform:rotate(360deg)}}.rqs-spinner{animation:rqs-spin 0.8s linear infinite}@media (prefers-reduced-motion: reduce){.rqs-spinner{animation:none}}`;
 
 /**
  * Built-in loading / error overlay. Enabled via `components.statusOverlay`.

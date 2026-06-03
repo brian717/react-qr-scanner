@@ -104,7 +104,7 @@ const visuallyHiddenStyle: CSSProperties = {
 	padding: 0,
 	margin: -1,
 	overflow: 'hidden',
-	clip: 'rect(0, 0, 0, 0)',
+	clipPath: 'inset(50%)',
 	whiteSpace: 'nowrap',
 	border: 0,
 };
@@ -275,7 +275,7 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 		}, [isCameraActive]);
 
 		// Observability callbacks are read through refs (depending only on the
-		// observed value) so passing inline handlers doesn't re-fire them.
+		// observed value), so passing inline handlers doesn't re-fire them.
 		const onCameraActiveRef = useRef(onCameraActive);
 		const onCapabilitiesChangeRef = useRef(onCapabilitiesChange);
 
@@ -287,11 +287,29 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 			onCapabilitiesChangeRef.current = onCapabilitiesChange;
 		}, [onCapabilitiesChange]);
 
+		// Skip the mount-time fire: `isCameraActive` is `false` and capabilities
+		// are empty placeholders before the camera starts, so reporting them would
+		// be spurious. These refs let the first real change through, not the mount.
+		const cameraActiveReportedRef = useRef(false);
+		const capabilitiesReportedRef = useRef(false);
+
 		useEffect(() => {
+			if (!cameraActiveReportedRef.current) {
+				cameraActiveReportedRef.current = true;
+
+				return;
+			}
+
 			onCameraActiveRef.current?.(isCameraActive);
 		}, [isCameraActive]);
 
 		useEffect(() => {
+			if (!capabilitiesReportedRef.current) {
+				capabilitiesReportedRef.current = true;
+
+				return;
+			}
+
 			onCapabilitiesChangeRef.current?.(camera.capabilities, camera.settings);
 		}, [camera.capabilities, camera.settings]);
 
@@ -530,7 +548,7 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 		);
 
 		// Opt-in loading/error overlay. Loading = the camera should be streaming
-		// but isn't active yet and no error has surfaced.
+		// but isn't active yet, and no error has surfaced.
 		const statusOverlay = mergedComponents.statusOverlay;
 		const isLoading =
 			cameraSettings.shouldStream && !isCameraActive && scannerError === null;
@@ -620,6 +638,7 @@ export const Scanner = forwardRef<IScannerHandle, IScannerProps>(
 							stopScanning={async () => {
 								try {
 									await camera.stopCamera();
+
 									clearCanvas(trackingLayerRef.current);
 									setIsCameraActive(false);
 								} catch (error) {
