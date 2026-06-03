@@ -36,6 +36,7 @@ Barcode Detection API with React hooks and components.
   - [Scanner Props](#scanner-props)
   - [Scanner Ref](#scanner-ref)
   - [useDevices Hook](#usedevices-hook)
+  - [Headless Hooks](#headless-hooks-advanced)
   - [Utilities](#utilities)
 - [Supported Formats](#supported-formats)
 - [Type Definitions](#type-definitions)
@@ -241,17 +242,30 @@ function UIComponentsExample() {
     <Scanner
       onScan={(result) => console.log(result)}
       components={{
-        audio: true, // Play beep sound on scan
         onOff: true, // Show camera on/off button
         torch: true, // Show torch/flashlight button (if supported)
         zoom: true, // Show zoom control (if supported)
-        finder: true, // Show finder overlay
+        finder: true, // Show finder overlay (or pass a config object to theme it)
+        statusOverlay: true, // Show built-in loading/error UI
       }}
-      // Custom sound (base64 encoded audio)
+      // `sound` is a top-level prop, not part of `components`. It defaults to a
+      // beep; pass a URL/data URI for a custom sound, or `false` to disable it.
       sound="data:audio/mp3;base64,YOUR_BASE64_AUDIO_HERE"
     />
   );
 }
+```
+
+The built-in finder can be themed by passing an `IFinderConfig` object instead
+of `true`:
+
+```jsx
+<Scanner
+  onScan={(result) => console.log(result)}
+  components={{
+    finder: { color: '#22c55e', size: '60%', borderRadius: '1rem' },
+  }}
+/>
 ```
 
 ## API Reference
@@ -262,6 +276,9 @@ function UIComponentsExample() {
 |------------------|-----------------------------------------------|----------|--------------|--------------------------------------------------------------------------------------------------------------------|
 | `onScan`         | `(detectedCodes: IDetectedBarcode[]) => void` | Yes      | -            | Called when one or more barcodes are detected.                                                                     |
 | `onError`        | `(error: IScannerError) => void`              | No       | -            | Called with a typed error if the camera fails to start or detection fails. See [Type Definitions](#iscannererror). |
+| `onDetected`     | `(detectedCodes: IDetectedBarcode[]) => void` | No       | -            | Raw per-frame stream: fires on every frame containing a code, before the duplicate/`scanDelay` gating of `onScan`. |
+| `onCameraActive` | `(active: boolean) => void`                   | No       | -            | Fires when the camera becomes active (`true`) or stops (`false`).                                                  |
+| `onCapabilitiesChange` | `(capabilities, settings) => void`      | No       | -            | Fires when the active track's `MediaTrackCapabilities` / `MediaTrackSettings` change (e.g., torch/zoom support).   |
 | `constraints`    | `MediaTrackConstraints`                       | No       | `{}`         | Media track constraints applied to the video stream (e.g., `facingMode`, `deviceId`).                              |
 | `formats`        | `BarcodeFormat[]`                             | No       | All          | Barcode formats to detect. If omitted, all supported formats are detected.                                         |
 | `paused`         | `boolean`                                     | No       | `false`      | If `true`, the scanner pauses and displays the last frame.                                                         |
@@ -279,8 +296,8 @@ function UIComponentsExample() {
 
 ### Scanner Ref
 
-`Scanner` is a `forwardRef` component. Pass a ref to access the underlying
-video element and the active `MediaStream`:
+`Scanner` is a `forwardRef` component. Pass a ref to access the underlying video
+element/stream and to control the camera imperatively:
 
 ```tsx
 import { Scanner, type IScannerHandle } from '@yudiel/react-qr-scanner';
@@ -289,10 +306,11 @@ import { useRef } from 'react';
 function App() {
   const scannerRef = useRef<IScannerHandle>(null);
 
-  function snapshot() {
-    const video = scannerRef.current?.getVideoElement();
-    if (!video) return;
-    // ...take a still frame from the video element
+  async function saveSnapshot() {
+    const blob = await scannerRef.current?.snapshot();
+    if (blob) {
+      // ...upload, preview, or download the captured frame
+    }
   }
 
   return <Scanner ref={scannerRef} onScan={console.log} />;
@@ -303,10 +321,30 @@ The ref shape is:
 
 ```ts
 interface IScannerHandle {
+  /** The underlying <video> element, or null before mount / after unmount. */
   getVideoElement: () => HTMLVideoElement | null;
+  /** The active MediaStream, or null when the camera is stopped. */
   getStream: () => MediaStream | null;
+  /** Reads camera activity, capabilities, and track settings at call time. */
+  getCameraState: () => {
+    isActive: boolean;
+    capabilities: ICameraCapabilities; // MediaTrackCapabilities + typed torch/zoom
+    settings: ICameraSettings; // MediaTrackSettings + typed torch/zoom
+  };
+  /** Captures the current frame as a Blob (null if no frame is available). */
+  snapshot: (options?: { type?: string; quality?: number }) => Promise<Blob | null>;
+  /** Toggles the torch; pass a boolean to set it explicitly. */
+  toggleTorch: (on?: boolean) => Promise<void>;
+  /** Sets the zoom level (clamped by the device's supported range). */
+  setZoom: (value: number) => Promise<void>;
+  /** Stops and restarts the camera with the current constraints. */
+  restart: () => Promise<void>;
 }
 ```
+
+> To switch cameras, set `constraints={{ deviceId }}` (see
+> [Device Selection](#device-selection)) rather than an imperative call — the
+> scanner is constraint-driven, so a declarative `deviceId` is authoritative.
 
 ### useDevices Hook
 
@@ -336,6 +374,39 @@ function CameraList() {
   );
 }
 ```
+
+### Headless Hooks (advanced)
+
+If you need a fully custom UI, the low-level hooks that power `<Scanner>` are
+exported directly:
+
+- **`useCamera(options?)`** — manages the `MediaStream` lifecycle and returns
+  `{ capabilities, settings, startCamera, stopCamera, updateConstraints, getStream }`.
+- **`useScanner(props)`** — drives the barcode-detection loop against a video
+  element ref and returns `{ startScanning, stopScanning }`.
+- **`useDevices()`** — the device list shown above.
+
+```tsx
+import { useCamera, useScanner } from '@yudiel/react-qr-scanner';
+import { useRef } from 'react';
+
+function CustomScanner() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const camera = useCamera();
+
+  const { startScanning, stopScanning } = useScanner({
+    videoElementRef: videoRef,
+    onScan: (codes) => console.log(codes),
+    onFound: () => {}, // hook for drawing your own overlay
+  });
+
+  // ...wire startCamera/startScanning into your own effects and UI
+  return <video ref={videoRef} autoPlay muted playsInline />;
+}
+```
+
+These are lower-level than `<Scanner>` and the surface may evolve; prefer the
+`<Scanner>` component and its imperative ref unless you need full control.
 
 ### Utilities
 
@@ -493,7 +564,21 @@ interface IScannerComponents {
   onOff?: boolean;
   torch?: boolean;
   zoom?: boolean;
-  finder?: boolean;
+  // `true` for the default overlay, or a config object to theme it.
+  finder?: boolean | IFinderConfig;
+  // `true` for the default loading/error UI, or a render function.
+  statusOverlay?: boolean | ((state: IStatusOverlayState) => ReactNode);
+}
+
+interface IFinderConfig {
+  color?: string; // default '#ef4444'
+  size?: string; // CSS dimension, default '70%'
+  borderRadius?: string; // default '0.5rem'
+}
+
+interface IStatusOverlayState {
+  error: IScannerError | null;
+  isLoading: boolean;
 }
 ```
 
@@ -521,10 +606,21 @@ interface IScannerError {
 
 ### `IScannerHandle`
 
+See [Scanner Ref](#scanner-ref) for the full shape:
+
 ```typescript
 interface IScannerHandle {
   getVideoElement: () => HTMLVideoElement | null;
   getStream: () => MediaStream | null;
+  getCameraState: () => {
+    isActive: boolean;
+    capabilities: ICameraCapabilities; // MediaTrackCapabilities + typed torch/zoom
+    settings: ICameraSettings; // MediaTrackSettings + typed torch/zoom
+  };
+  snapshot: (options?: { type?: string; quality?: number }) => Promise<Blob | null>;
+  toggleTorch: (on?: boolean) => Promise<void>;
+  setZoom: (value: number) => Promise<void>;
+  restart: () => Promise<void>;
 }
 ```
 
