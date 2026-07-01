@@ -1,3 +1,4 @@
+export type { IAPLWindow } from './IAPLWindow';
 export type { IBoundingBox } from './IBoundingBox';
 export type { IDetectedBarcode } from './IDetectedBarcode';
 export type { IPoint } from './IPoint';

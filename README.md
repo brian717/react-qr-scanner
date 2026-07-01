@@ -14,6 +14,7 @@ Barcode Detection API with React hooks and components.
 - **Flexible Scanning**: Continuous scanning, single scan mode, or pause/resume functionality
 - **Custom Tracking**: Draw custom overlays and tracking visualizations on detected barcodes
 - **Device Selection**: Choose specific cameras with the `useDevices` hook
+- **Windowed Auto-Exposure**: Drive manual camera exposure from a metering window with the `useWindowedExposure` hook
 - **Customizable UI**: Custom styles, class names, and component overrides
 - **Audio Feedback**: Optional beep sound on successful scans (with custom sound support)
 - **TypeScript Support**: Fully typed for excellent developer experience
@@ -36,6 +37,7 @@ Barcode Detection API with React hooks and components.
   - [Scanner Props](#scanner-props)
   - [Scanner Ref](#scanner-ref)
   - [useDevices Hook](#usedevices-hook)
+  - [useWindowedExposure Hook](#usewindowedexposure-hook)
   - [Utilities](#utilities)
 - [Supported Formats](#supported-formats)
 - [Type Definitions](#type-definitions)
@@ -337,6 +339,73 @@ function CameraList() {
 }
 ```
 
+### useWindowedExposure Hook
+
+Continuously meters the average picture level (APL) of a window within the
+video frame and drives the camera's manual exposure time toward a target
+level. Useful when the code being scanned occupies a small, dim, or backlit
+region of the frame that the camera's continuous auto-exposure meters poorly.
+
+The camera must support manual exposure (an `exposureTime` capability and a
+`manual` exposure mode) — common on mobile cameras, rare on laptop webcams.
+When unsupported, `onError` is called and the hook stays idle. Continuous
+auto-exposure is restored when the track is replaced or the component
+unmounts; pausing keeps the last manual exposure applied.
+
+```tsx
+import {
+  Scanner,
+  useWindowedExposure,
+  type IScannerHandle,
+} from '@yudiel/react-qr-scanner';
+import { useEffect, useRef } from 'react';
+
+function App() {
+  const scannerRef = useRef<IScannerHandle>(null);
+  const { setVideoElement, setVideoTrack } = useWindowedExposure({
+    targetAPL: 100,
+    onError: (error) => console.warn(error.message),
+  });
+
+  // Wire the scanner's video element and track into the hook once the
+  // camera stream is available.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const stream = scannerRef.current?.getStream();
+      if (!stream) return;
+
+      window.clearInterval(id);
+      setVideoElement(scannerRef.current?.getVideoElement() ?? null);
+      setVideoTrack(stream.getVideoTracks()[0] ?? null);
+    }, 100);
+
+    return () => window.clearInterval(id);
+  }, [setVideoElement, setVideoTrack]);
+
+  return <Scanner ref={scannerRef} onScan={console.log} />;
+}
+```
+
+**Options** (all optional):
+
+| Option           | Type                                                   | Default            | Description                                                                                                       |
+| ---------------- | ------------------------------------------------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `targetAPL`      | `number`                                               | `100`              | Average picture level (0-255 luma) the controller drives toward                                                    |
+| `getWindow`      | `(videoWidth: number, videoHeight: number) => IAPLWindow` | centered 20% square | Region of the frame to meter, in video pixel coordinates. Must be referentially stable (module-level or memoized) |
+| `updateInterval` | `number`                                               | `200`              | Minimum time (ms) between exposure adjustments                                                                     |
+| `onError`        | `(error: IScannerError) => void`                       | —                  | Called when manual exposure is unsupported or a constraint update fails                                            |
+
+**Returns:**
+
+```ts
+{
+  setVideoElement: (element: HTMLVideoElement | null) => void; // usable as a JSX ref
+  setVideoTrack: (track: MediaStreamTrack | null) => void;
+  setPaused: (paused: boolean) => void;
+  paused: boolean;
+}
+```
+
 ### Utilities
 
 #### `isBarcodeDetectorSupported()`
@@ -482,6 +551,20 @@ interface IBoundingBox {
 interface IPoint {
   x: number;
   y: number;
+}
+```
+
+### `IAPLWindow`
+
+Region of the video frame metered by `useWindowedExposure`, in video pixel
+coordinates.
+
+```typescript
+interface IAPLWindow {
+  startX: number;
+  startY: number;
+  width: number;
+  height: number;
 }
 ```
 
